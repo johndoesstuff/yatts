@@ -21,6 +21,8 @@ std::string get_current_date() {
 	return ss.str();
 }
 
+std::string indent = "    ";
+
 class Task {
 	public:
 		std::string name;
@@ -86,10 +88,8 @@ class CompletionTracker {
 			int count = 1;
 
 			auto flush_task = [&](const std::string& task, double pts, int cnt) {
-				if (cnt > 1)
-					std::cout << "  " << cnt << "x " << task << ": " << cnt*pts << " points (" << pts << " per)" << std::endl;
-				else
-					std::cout << "  " << task << ": " << pts << " points" << std::endl;
+				if (cnt > 1) std::cout << indent << cnt << "x " << task << ": " << cnt*pts << " points (" << pts << " per)" << std::endl;
+				else std::cout << indent << task << ": " << pts << " points" << std::endl;
 				day_points += pts * cnt;
 			};
 
@@ -198,18 +198,83 @@ class TaskManager {
 		}
 };
 
+TaskManager task_manager;
+CompletionTracker tracker;
+
+char* generator_from_vector(const char* text, int state, const std::vector<std::string>& list) {
+	static size_t index;
+	static size_t len;
+
+	if (state == 0) { // reset search
+		index = 0;
+		len = strlen(text);
+	}
+
+	while (index < list.size()) {
+		const std::string& candidate = list[index++];
+		if (candidate.compare(0, len, text) == 0)
+			return strdup(candidate.c_str()); // must return malloc'ed string
+	}
+	return nullptr;
+}
+
+std::vector<std::string> commands = {
+	"start", "complete", "add", "history", "exit", "quit", "today", "yesterday", "list"
+};
+
+char* command_generator(const char* text, int state) {
+	return generator_from_vector(text, state, commands);
+}
+
+char* static_task_generator(const char* text, int state) {
+	auto tasks = task_manager.get_tasks();
+	std::vector<Task> filtered;
+	std::copy_if(tasks.begin(), tasks.end(), std::back_inserter(filtered),
+			[](const Task& t) { return !t.timer_based; });
+	std::vector<std::string> task_names;
+	task_names.reserve(filtered.size());
+	std::transform(filtered.begin(), filtered.end(), std::back_inserter(task_names),
+			[](const Task& t) { return t.name; });
+	return generator_from_vector(text, state, task_names);
+}
+
+char* timer_task_generator(const char* text, int state) {
+	auto tasks = task_manager.get_tasks();
+	std::vector<Task> filtered;
+	std::copy_if(tasks.begin(), tasks.end(), std::back_inserter(filtered),
+			[](const Task& t) { return t.timer_based; });
+	std::vector<std::string> task_names;
+	task_names.reserve(filtered.size());
+	std::transform(filtered.begin(), filtered.end(), std::back_inserter(task_names),
+			[](const Task& t) { return t.name; });
+	return generator_from_vector(text, state, task_names);
+}
+
+char** completion_callback(const char* text, int start, int end) {
+	if (start == 0) return rl_completion_matches(text, command_generator);
+
+	std::string line(rl_line_buffer);
+	std::string first_word = line.substr(0, line.find(' '));
+
+	if (first_word == "complete" || first_word == "c") return rl_completion_matches(text, static_task_generator);
+	if (first_word == "start" || first_word == "s") return rl_completion_matches(text, timer_task_generator);
+
+	rl_attempted_completion_over = 1;
+
+	return nullptr;
+}
+
 int main() {
-	TaskManager task_manager;
-	CompletionTracker tracker;
+	rl_attempted_completion_function = completion_callback;
 
 	std::cout << "Yet Another Task Tracking System" << std::endl;
 	std::cout << "Commands:" << std::endl;
-	std::cout << "  add <name> <points> [limited 0/1] [daily_limit] [timer based 0/1]" << std::endl;
-	std::cout << "  complete <name> [times]" << std::endl;
-	std::cout << "  start <name>" << std::endl;
-	std::cout << "  history <date or today>" << std::endl;
-	std::cout << "  list" << std::endl;
-	std::cout << "  quit" << std::endl;
+	std::cout << indent << "add <name> <points> [limited 0/1] [daily_limit] [timer based 0/1]" << std::endl;
+	std::cout << indent << "complete <name> [times]" << std::endl;
+	std::cout << indent << "start <name>" << std::endl;
+	std::cout << indent << "history <date or today>" << std::endl;
+	std::cout << indent << "list" << std::endl;
+	std::cout << indent << "quit" << std::endl;
 
 	std::string line;
 	while (true) {
@@ -322,7 +387,7 @@ int main() {
 		} else if (cmd == "list" || cmd == "ls" || cmd == "l") {
 			std::cout << "Tasks:" << std::endl;
 			for (const auto& t : task_manager.get_tasks()) {
-				std::cout << "  " << t.name << " (" << t.points << " pts)";
+				std::cout << "    " << t.name << " (" << t.points << " pts)";
 				if (t.is_limited) {
 					std::cout << " [limited: " << t.daily_limit << "/day";
 					auto date = get_current_date();

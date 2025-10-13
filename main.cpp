@@ -51,6 +51,11 @@ class CompletionTracker {
 			return day[task.name] < task.daily_limit;
 		}
 
+		int completions_day(const Task& task, const std::string& date) {
+			auto& day = daily_completions[date];
+			return day[task.name];
+		}
+
 		void complete(const Task& task, const std::string& date) {
 			if (!can_complete(task, date)) {
 				std::cout << "Cannot complete " << task.name << ", daily limit reached." << std::endl;
@@ -73,10 +78,34 @@ class CompletionTracker {
 			}
 			double day_points = 0;
 			std::cout << "History for " << date << ":" << std::endl;
-			for (const auto& p : it->second) {
-				std::cout << "  " << p.first << ": " << p.second << " points" << std::endl;
-				day_points += p.second;
+
+			const auto& entries = it->second;
+
+			std::string last_task = entries[0].first;
+			double last_points = entries[0].second;
+			int count = 1;
+
+			auto flush_task = [&](const std::string& task, double pts, int cnt) {
+				if (cnt > 1)
+					std::cout << "  " << cnt << "x " << task << ": " << cnt*pts << " points (" << pts << " per)" << std::endl;
+				else
+					std::cout << "  " << task << ": " << pts << " points" << std::endl;
+				day_points += pts * cnt;
+			};
+
+			for (int i = 1; i < entries.size(); i++) {
+				const auto& [task_name, points] = entries[i];
+				if (task_name == last_task && points == last_points) {
+					count++;
+				} else {
+					flush_task(last_task, last_points, count);
+					last_task = task_name;
+					last_points = points;
+					count = 1;
+				}
 			}
+			flush_task(last_task, last_points, count);
+
 			std::cout << "Total points for the day: " << day_points << std::endl;
 		}
 
@@ -175,8 +204,8 @@ int main() {
 
 	std::cout << "Yet Another Task Tracking System" << std::endl;
 	std::cout << "Commands:" << std::endl;
-	std::cout << "  add <name> <points> <limited 0/1> <daily_limit> <timer based 0/1>" << std::endl;
-	std::cout << "  complete <name>" << std::endl;
+	std::cout << "  add <name> <points> [limited 0/1] [daily_limit] [timer based 0/1]" << std::endl;
+	std::cout << "  complete <name> [times]" << std::endl;
 	std::cout << "  start <name>" << std::endl;
 	std::cout << "  history <date or today>" << std::endl;
 	std::cout << "  list" << std::endl;
@@ -197,10 +226,7 @@ int main() {
 		// shortcuts
 		auto pos = iss.tellg();
 		iss >> cmd;
-		if (cmd == "today") {
-			cmd = "history";
-			iss.seekg(pos);
-		} else if (cmd == "yesterday") {
+		if (cmd == "today" || cmd == "yesterday" || cmd == "t" || cmd == "y") {
 			cmd = "history";
 			iss.seekg(pos);
 		}
@@ -262,6 +288,7 @@ int main() {
 
 			if (it == tasks.end()) {
 				std::cout << "Task not found." << std::endl;
+				continue;
 			}
 			if (!it->timer_based) {
 				std::cout << "Task " << it->name << " is not timer based" << std::endl;
@@ -281,8 +308,8 @@ int main() {
 				std::cout << "Expected date" << std::endl;
 				continue;
 			}
-			if (date_str == "today") date_str = get_current_date();
-			else if (date_str == "yesterday") {
+			if (date_str == "today" || date_str == "t") date_str = get_current_date();
+			else if (date_str == "yesterday" || date_str == "y") {
 				auto now = std::chrono::system_clock::now();
 				auto yesterday = now - std::chrono::hours(24);
 				auto in_time_t = std::chrono::system_clock::to_time_t(yesterday);
@@ -296,7 +323,15 @@ int main() {
 			std::cout << "Tasks:" << std::endl;
 			for (const auto& t : task_manager.get_tasks()) {
 				std::cout << "  " << t.name << " (" << t.points << " pts)";
-				if (t.is_limited) std::cout << " [limited: " << t.daily_limit << "/day]";
+				if (t.is_limited) {
+					std::cout << " [limited: " << t.daily_limit << "/day";
+					auto date = get_current_date();
+					int completions = tracker.completions_day(t, date);
+					if (completions) {
+						std::cout << ", " << t.daily_limit - completions << " left";
+					}
+					std::cout << "]";
+				}
 				if (t.timer_based) std::cout << " [timer based]";
 				std::cout << std::endl;
 			}

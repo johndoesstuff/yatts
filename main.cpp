@@ -222,8 +222,16 @@ std::vector<std::string> commands = {
 	"start", "complete", "add", "history", "exit", "quit", "today", "yesterday", "list"
 };
 
+std::vector<std::string> filters = {
+	"nolimit", "notimer", "timer", "limited"
+};
+
 char* command_generator(const char* text, int state) {
 	return generator_from_vector(text, state, commands);
+}
+
+char* filter_generator(const char* text, int state) {
+	return generator_from_vector(text, state, filters);
 }
 
 char* static_task_generator(const char* text, int state) {
@@ -258,6 +266,7 @@ char** completion_callback(const char* text, int start, int end) {
 
 	if (first_word == "complete" || first_word == "c") return rl_completion_matches(text, static_task_generator);
 	if (first_word == "start" || first_word == "s") return rl_completion_matches(text, timer_task_generator);
+	if (first_word == "list" || first_word == "ls" || first_word == "l") return rl_completion_matches(text, filter_generator);
 
 	rl_attempted_completion_over = 1;
 
@@ -385,8 +394,25 @@ int main() {
 			}
 			tracker.view_history(date_str);
 		} else if (cmd == "list" || cmd == "ls" || cmd == "l") {
+			std::string filter;
+			if (iss >> filter) {
+				if (filter == "t" || filter == "time" || filter == "timer") filter = "timer";
+				else if (filter == "l" || filter == "lim" || filter == "limit" || filter == "limited") filter = "limited";
+				else if (filter == "nt" || filter == "notime" || filter == "notimer") filter = "notimer";
+				else if (filter == "nl" || filter == "nolim" || filter == "nolimit" || filter == "notlimited") filter = "nolimit";
+				else {
+					std::cout << "Filter " << filter << " not recognized" << std::endl;
+					continue;
+				}
+			} else {
+				filter = "none";
+			}
 			std::cout << "Tasks:" << std::endl;
 			for (const auto& t : task_manager.get_tasks()) {
+				if (filter == "timer" && !t.timer_based) continue;
+				if (filter == "notimer" && t.timer_based) continue;
+				if (filter == "limited" && !t.is_limited) continue;
+				if (filter == "nolimit" && t.is_limited) continue;
 				std::cout << "    " << t.name << " (" << t.points << " pts)";
 				if (t.is_limited) {
 					std::cout << " [limited: " << t.daily_limit << "/day";

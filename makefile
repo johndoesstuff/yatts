@@ -1,5 +1,5 @@
 target:
-	g++ main.cpp -o yatts
+	g++ main.cpp -lreadline -o yatts
 
 clean:
 	rm yatts

@@ -184,7 +184,7 @@ int main() {
 		iss >> cmd;
 		std::cout << "==========" << std::endl;
 
-		if (cmd == "add") {
+		if (cmd == "add" || cmd == "a") {
 			std::string name;
 			int points;
 			int lim_int;
@@ -206,7 +206,7 @@ int main() {
 			}
 			task_manager.add_task(Task(name, points, limited, daily_lim));
 			std::cout << "Added task: " << name << std::endl;
-		} else if (cmd == "complete") {
+		} else if (cmd == "complete" || cmd == "c") {
 			std::string name;
 			int times_completed = 1;
 			if (!(iss >> name)) {
@@ -222,21 +222,33 @@ int main() {
 			} else {
 				std::cout << "Task not found." << std::endl;
 			}
-		} else if (cmd == "history") {
+		} else if (cmd == "history" || cmd =="h" || cmd == "today" || cmd == "yesterday") {
 			std::string date_str;
-			iss >> date_str;
-			if (date_str == "today") date_str = get_current_date();
+			if (!(iss >> date_str) && cmd != "today" && cmd != "yesterday") {
+				std::cout << "Expected date" << std::endl;
+				continue;
+			}
+			if (date_str == "today" || cmd == "today") date_str = get_current_date();
+			else if (date_str == "yesterday" || cmd == "yesterday") {
+				auto now = std::chrono::system_clock::now();
+				auto yesterday = now - std::chrono::hours(24);
+				auto in_time_t = std::chrono::system_clock::to_time_t(yesterday);
+				std::tm tm = *std::localtime(&in_time_t);
+				std::stringstream ss;
+				ss << std::put_time(&tm, "%Y-%m-%d");
+				date_str = ss.str();
+			}
 			tracker.view_history(date_str);
 		} else if (cmd == "total") {
 			std::cout << "Total points: " << tracker.get_total_points() << std::endl;
-		} else if (cmd == "list") {
+		} else if (cmd == "list" || cmd == "ls") {
 			std::cout << "Tasks:" << std::endl;
 			for (const auto& t : task_manager.get_tasks()) {
 				std::cout << "  " << t.name << " (" << t.points << " pts)";
 				if (t.is_limited) std::cout << " [limited: " << t.daily_limit << "/day]";
 				std::cout << std::endl;
 			}
-		} else if (cmd == "quit" || cmd == "exit") {
+		} else if (cmd == "quit" || cmd == "exit" || cmd == "q" || cmd == "e") {
 			break;
 		} else {
 			std::cout << "Unknown command." << std::endl;

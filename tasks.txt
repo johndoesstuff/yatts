@@ -11,3 +11,4 @@ brush-teeth,1,1,2
 work-hour,12,0,0
 check-mail,1,1,1
 check-bank,1,1,1
+clear-voicemail,1,1,1

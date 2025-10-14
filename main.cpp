@@ -35,114 +35,6 @@ class Task {
 			: name(n), points(p), is_limited(lim), daily_limit(lim_count), timer_based(tb) {}
 };
 
-class CompletionTracker {
-	private:
-		std::map<std::string, std::map<std::string, int>> daily_completions; // date -> task_name -> count
-		std::map<std::string, std::vector<std::pair<std::string, double>>> history; // date -> vector<pair<task_name, points>>
-		double total_points = 0;
-		const std::string history_file = "history.txt";
-
-	public:
-		CompletionTracker() {
-			load_history();
-		}
-
-		bool can_complete(const Task& task, const std::string& date) {
-			if (!task.is_limited) return true;
-			auto& day = daily_completions[date];
-			return day[task.name] < task.daily_limit;
-		}
-
-		int completions_day(const Task& task, const std::string& date) {
-			auto& day = daily_completions[date];
-			return day[task.name];
-		}
-
-		void complete(const Task& task, const std::string& date) {
-			if (!can_complete(task, date)) {
-				std::cout << "Cannot complete " << task.name << ", daily limit reached." << std::endl;
-				return;
-			}
-			auto& day_comp = daily_completions[date];
-			day_comp[task.name]++;
-			auto& hist = history[date];
-			hist.push_back({task.name, task.points});
-			total_points += task.points;
-			save_history(task, date);
-			std::cout << "Completed " << task.name << ", earned " << task.points << " points." << std::endl;
-		}
-
-		void view_history(const std::string& date) {
-			auto it = history.find(date);
-			if (it == history.end()) {
-				std::cout << "No history for " << date << "." << std::endl;
-				return;
-			}
-			double day_points = 0;
-			std::cout << "History for " << date << ":" << std::endl;
-
-			const auto& entries = it->second;
-
-			std::string last_task = entries[0].first;
-			double last_points = entries[0].second;
-			int count = 1;
-
-			auto flush_task = [&](const std::string& task, double pts, int cnt) {
-				if (cnt > 1) std::cout << indent << cnt << "x " << task << ": " << cnt*pts << " points (" << pts << " per)" << std::endl;
-				else std::cout << indent << task << ": " << pts << " points" << std::endl;
-				day_points += pts * cnt;
-			};
-
-			for (int i = 1; i < entries.size(); i++) {
-				const auto& [task_name, points] = entries[i];
-				if (task_name == last_task && points == last_points) {
-					count++;
-				} else {
-					flush_task(last_task, last_points, count);
-					last_task = task_name;
-					last_points = points;
-					count = 1;
-				}
-			}
-			flush_task(last_task, last_points, count);
-
-			std::cout << "Total points for the day: " << day_points << std::endl;
-		}
-
-		double get_total_points() const {
-			return total_points;
-		}
-
-	private:
-		void load_history() {
-			std::ifstream file(history_file);
-			if (!file.is_open()) return;
-
-			std::string line;
-			while (std::getline(file, line)) {
-				std::istringstream iss(line);
-				std::string date, task_name;
-				double points;
-				if (std::getline(iss, date, ',') && std::getline(iss, task_name, ',') && iss >> points) {
-					history[date].push_back({task_name, points});
-					daily_completions[date][task_name]++;
-					total_points += points;
-				}
-			}
-			file.close();
-		}
-
-		void save_history(const Task& task, const std::string& date) {
-			std::ofstream file(history_file, std::ios::app);
-			if (file.is_open()) {
-				file << date << "," << task.name << "," << task.points << "\n";
-				file.close();
-			} else {
-				std::cout << "Error: Could not save to history file." << std::endl;
-			}
-		}
-};
-
 class TaskManager {
 	private:
 		std::vector<Task> tasks;
@@ -199,6 +91,146 @@ class TaskManager {
 };
 
 TaskManager task_manager;
+
+class CompletionTracker {
+	private:
+		std::map<std::string, std::map<std::string, int>> daily_completions; // date -> task_name -> count
+		std::map<std::string, std::vector<std::pair<std::string, double>>> history; // date -> vector<pair<task_name, points>>
+		double total_points = 0;
+		const std::string history_file = "history.txt";
+
+	public:
+		CompletionTracker() {
+			load_history();
+		}
+
+		bool can_complete(const Task& task, const std::string& date) {
+			if (!task.is_limited) return true;
+			auto& day = daily_completions[date];
+			return day[task.name] < task.daily_limit;
+		}
+
+		int completions_day(const Task& task, const std::string& date) {
+			auto& day = daily_completions[date];
+			return day[task.name];
+		}
+
+		void complete(const Task& task, const std::string& date, bool suppress = false) {
+			if (!can_complete(task, date)) {
+				std::cout << "Cannot complete " << task.name << ", daily limit reached." << std::endl;
+				return;
+			}
+			auto& day_comp = daily_completions[date];
+			day_comp[task.name]++;
+			auto& hist = history[date];
+			hist.push_back({task.name, task.points});
+			total_points += task.points;
+			save_history(task, date);
+			if (!suppress) std::cout << "Completed " << task.name << ", earned " << task.points << " points." << std::endl;
+		}
+
+		void view_history(const std::string& date) {
+			auto it = history.find(date);
+			if (it == history.end()) {
+				std::cout << "No history for " << date << "." << std::endl;
+				return;
+			}
+			double day_points = 0;
+			std::cout << "History for " << date << ":" << std::endl;
+
+			const auto& entries = it->second;
+
+			std::string last_task = entries[0].first;
+			double last_points = entries[0].second;
+			int count = 1;
+
+			auto flush_task = [&](const std::string& task, double pts, int cnt) {
+				if (cnt > 1) std::cout << indent << cnt << "x " << task << ": " << cnt*pts << " points (" << pts << " per)" << std::endl;
+				else std::cout << indent << task << ": " << pts << " points" << std::endl;
+				day_points += pts * cnt;
+			};
+
+			for (int i = 1; i < entries.size(); i++) {
+				const auto& [task_name, points] = entries[i];
+				if (task_name == last_task && points == last_points) {
+					count++;
+				} else {
+					flush_task(last_task, last_points, count);
+					last_task = task_name;
+					last_points = points;
+					count = 1;
+				}
+			}
+			flush_task(last_task, last_points, count);
+
+			std::cout << "Total points for the day: " << day_points << std::endl;
+
+			if (day_points > 0) {
+				std::map<std::string, std::pair<int, double>> task_summary;
+				for (const auto& p : it->second) {
+					auto& entry = task_summary[p.first];
+					entry.first++;
+					entry.second += p.second;
+				}
+
+				std::vector<std::pair<std::string, double>> sorted_tasks;
+				for (const auto& kv : task_summary) {
+					sorted_tasks.push_back({kv.first, kv.second.second});
+				}
+				std::sort(sorted_tasks.begin(), sorted_tasks.end(),
+						[](const auto& a, const auto& b) { return a.second > b.second; });
+
+				std::cout << "\nSummary for " << date << ":" << std::endl;
+				for (const auto& st : sorted_tasks) {
+					const auto& name = st.first;
+					int count = task_summary[name].first;
+					double points = st.second;
+					auto tasks = task_manager.get_tasks();
+					auto task_it = std::find_if(tasks.begin(), tasks.end(),
+							[&name](const Task& t){ return t.name == name; });
+					double percent = (static_cast<double>(points) / day_points) * 100.0;
+					std::cout << indent << name << ": " << count << (task_it->timer_based ? " minute" : " time") << (count > 1 ? "s" : "")
+						<< ", " << points << " points (" << std::fixed << std::setprecision(2) << percent << "%)" << std::endl;
+				}
+			}
+
+			std::cout << "Total points for the day: " << day_points << std::endl;
+		}
+
+		double get_total_points() const {
+			return total_points;
+		}
+
+	private:
+		void load_history() {
+			std::ifstream file(history_file);
+			if (!file.is_open()) return;
+
+			std::string line;
+			while (std::getline(file, line)) {
+				std::istringstream iss(line);
+				std::string date, task_name;
+				double points;
+				if (std::getline(iss, date, ',') && std::getline(iss, task_name, ',') && iss >> points) {
+					history[date].push_back({task_name, points});
+					daily_completions[date][task_name]++;
+					total_points += points;
+				}
+			}
+			file.close();
+		}
+
+		void save_history(const Task& task, const std::string& date) {
+			std::ofstream file(history_file, std::ios::app);
+			if (file.is_open()) {
+				file << date << "," << task.name << "," << task.points << "\n";
+				file.close();
+			} else {
+				std::cout << "Error: Could not save to history file." << std::endl;
+			}
+		}
+};
+
 CompletionTracker tracker;
 
 char* generator_from_vector(const char* text, int state, const std::vector<std::string>& list) {
@@ -374,9 +406,9 @@ int main() {
 			std::getline(std::cin, line);
 			auto task_end = std::chrono::system_clock::now();
 			int minutes = std::chrono::duration_cast<std::chrono::minutes>(task_end - task_start).count();
-			std::cout << minutes << " minutes completed." << std::endl;
-			for (int i = 0; i < minutes; i++) tracker.complete(*it, date);
-		} else if (cmd == "history" || cmd =="h") {
+			std::cout << minutes << " minutes completed. (" << minutes*it->points << " points)" << std::endl;
+			for (int i = 0; i < minutes; i++) tracker.complete(*it, date, true);
+		} else if (cmd == "history" || cmd == "h") {
 			std::string date_str;
 			if (!(iss >> date_str)) {
 				std::cout << "Expected date" << std::endl;

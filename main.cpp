@@ -129,6 +129,38 @@ class CompletionTracker {
 			if (!suppress) std::cout << "Completed " << task.name << ", earned " << task.points << " points." << std::endl;
 		}
 
+		double get_points(const std::string& date) {
+			auto it = history.find(date);
+			if (it == history.end()) {
+				return 0.0;
+			}
+			double day_points = 0;
+			const auto& entries = it->second;
+
+			std::string last_task = entries[0].first;
+			double last_points = entries[0].second;
+			int count = 1;
+
+			auto flush_task = [&](const std::string& task, double pts, int cnt) {
+				day_points += pts * cnt;
+			};
+
+			for (int i = 1; i < entries.size(); i++) {
+				const auto& [task_name, points] = entries[i];
+				if (task_name == last_task && points == last_points) {
+					count++;
+				} else {
+					flush_task(last_task, last_points, count);
+					last_task = task_name;
+					last_points = points;
+					count = 1;
+				}
+			}
+			flush_task(last_task, last_points, count);
+			
+			return day_points;
+		}
+
 		void view_history(const std::string& date) {
 			auto it = history.find(date);
 			if (it == history.end()) {
@@ -425,6 +457,35 @@ int main() {
 				date_str = ss.str();
 			}
 			tracker.view_history(date_str);
+		} else if (cmd == "graph" || cmd == "g") {
+			int day_count = 0;
+			if (!(iss >> day_count)) {
+				day_count = 7;
+			}
+			std::cout << "Date\t\tPoints Earned" << std::endl;
+			auto now = std::chrono::system_clock::now();
+			for (int i = 0; i < day_count; i++) {
+				auto day = now - std::chrono::hours(i*24);
+				auto in_time_t = std::chrono::system_clock::to_time_t(day);
+				std::tm tm = *std::localtime(&in_time_t);
+				std::stringstream ss;
+				ss << std::put_time(&tm, "%Y-%m-%d");
+				auto day_str = ss.str();
+				double day_points = tracker.get_points(day_str);
+				std::cout << day_str << " : \t" << day_points << "\t\t";
+				double pts = 5.0;
+				if (day_points == 0.0) std::cout << "~";
+				else {
+					while (day_points > pts) {
+						std::cout << "#";
+						day_points -= pts;
+					}
+					if (day_points > pts/2.0) {
+						std::cout << ".";
+					}
+				}
+				std::cout << std::endl;
+			}
 		} else if (cmd == "list" || cmd == "ls" || cmd == "l") {
 			std::string filter;
 			if (iss >> filter) {

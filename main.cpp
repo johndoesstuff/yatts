@@ -464,6 +464,7 @@ int main() {
 			}
 			std::cout << "Date\t\tPoints Earned" << std::endl;
 			auto now = std::chrono::system_clock::now();
+			double all_points = 0.0;
 			for (int i = 0; i < day_count; i++) {
 				auto day = now - std::chrono::hours(i*24);
 				auto in_time_t = std::chrono::system_clock::to_time_t(day);
@@ -472,6 +473,7 @@ int main() {
 				ss << std::put_time(&tm, "%Y-%m-%d");
 				auto day_str = ss.str();
 				double day_points = tracker.get_points(day_str);
+				all_points += day_points;
 				std::cout << day_str << " : \t" << day_points << "\t\t";
 				double pts = 5.0;
 				if (day_points == 0.0) std::cout << "~";
@@ -486,6 +488,7 @@ int main() {
 				}
 				std::cout << std::endl;
 			}
+			std::cout << std::endl << "Total Points :\t" << all_points << std::endl;
 		} else if (cmd == "list" || cmd == "ls" || cmd == "l") {
 			std::string filter;
 			if (iss >> filter) {
@@ -521,6 +524,8 @@ int main() {
 			}
 		} else if (cmd == "quit" || cmd == "exit" || cmd == "q" || cmd == "e") {
 			break;
+		} else if (cmd == "refresh" || cmd == "r") {
+			// TODO
 		} else {
 			std::cout << "Unknown command." << std::endl;
 		}

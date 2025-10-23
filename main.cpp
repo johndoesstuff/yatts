@@ -23,6 +23,8 @@ std::string get_current_date() {
 
 std::string indent = "    ";
 
+int task_id_it = 0;
+
 class Task {
 	public:
 		std::string name;
@@ -30,17 +32,25 @@ class Task {
 		bool is_limited;
 		int daily_limit;
 		bool timer_based;
+		bool bounty;
+		unsigned int id;
 
-		Task(std::string n, double p, bool lim = false, int lim_count = 0, bool tb = false)
-			: name(n), points(p), is_limited(lim), daily_limit(lim_count), timer_based(tb) {}
+		Task(std::string n, double p, bool lim = false, int lim_count = 0, bool tb = false, bool b = false) : name(n), points(p), is_limited(lim), daily_limit(lim_count), timer_based(tb), bounty(b) {
+			id = task_id_it++;
+		}
+
+		bool operator==(const Task& other) {
+			return id == other.id;
+		}
 };
 
 class TaskManager {
 	private:
-		std::vector<Task> tasks;
 		const std::string task_file = "tasks.txt";
 
 	public:
+		std::vector<Task> tasks;
+
 		TaskManager() {
 			load_tasks();
 		}
@@ -54,7 +64,6 @@ class TaskManager {
 			return tasks;
 		}
 
-	private:
 		void load_tasks() {
 			std::ifstream file(task_file);
 			if (!file.is_open()) return;
@@ -65,14 +74,15 @@ class TaskManager {
 				std::string name;
 				std::string junk;
 				double points;
-				int is_limited, daily_limit, timer_based;
+				int is_limited, daily_limit, timer_based, bounty;
 
 				std::getline(iss, name, ',') && iss >> points;
 				std::getline(iss, junk, ',') && iss >> is_limited;
 				std::getline(iss, junk, ',') && iss >> daily_limit;
 				std::getline(iss, junk, ',') && iss >> timer_based;
+				std::getline(iss, junk, ',') && iss >> bounty;
 				bool limited = is_limited == 1;
-				tasks.emplace_back(name, points, limited, limited ? daily_limit : 0, timer_based);
+				tasks.emplace_back(name, points, limited, limited ? daily_limit : 0, timer_based, bounty);
 			}
 			file.close();
 		}
@@ -81,7 +91,7 @@ class TaskManager {
 			std::ofstream file(task_file);
 			if (file.is_open()) {
 				for (const auto& t : tasks) {
-					file << t.name << "," << t.points << "," << (t.is_limited ? 1 : 0) << "," << t.daily_limit << "," << (t.timer_based ? 1 : 0) << "\n";
+					file << t.name << "," << t.points << "," << (t.is_limited ? 1 : 0) << "," << t.daily_limit << "," << (t.timer_based ? 1 : 0) << "," << (t.bounty ? 1 : 0) << "\n";
 				}
 				file.close();
 			} else {
@@ -126,7 +136,12 @@ class CompletionTracker {
 			hist.push_back({task.name, task.points});
 			total_points += task.points;
 			save_history(task, date);
-			if (!suppress) std::cout << "Completed " << task.name << ", earned " << task.points << " points." << std::endl;
+			if (task.bounty) {
+				std::remove(task_manager.tasks.begin(), task_manager.tasks.end(), task);
+				task_manager.tasks.pop_back();
+				task_manager.save_tasks();
+			}
+			if (!suppress) std::cout << "Completed " << (task.bounty ? "bounty " : "") << task.name << ", earned " << task.points << " points." << std::endl;
 		}
 
 		double get_points(const std::string& date) {
@@ -343,9 +358,11 @@ int main() {
 	std::cout << "Yet Another Task Tracking System" << std::endl;
 	std::cout << "Commands:" << std::endl;
 	std::cout << indent << "add <name> <points> [limited 0/1] [daily_limit] [timer based 0/1]" << std::endl;
+	std::cout << indent << "bounty <name> <points>" << std::endl;
 	std::cout << indent << "complete <name> [times]" << std::endl;
 	std::cout << indent << "start <name>" << std::endl;
 	std::cout << indent << "history <date or today>" << std::endl;
+	std::cout << indent << "graph [days]" << std::endl;
 	std::cout << indent << "list" << std::endl;
 	std::cout << indent << "quit" << std::endl;
 
@@ -392,7 +409,22 @@ int main() {
 			if (iss >> daily_lim) {
 				iss >> timer_based;
 			}
-			task_manager.add_task(Task(name, points, limited, daily_lim, timer_based));
+			bool bounty = 0;
+			task_manager.add_task(Task(name, points, limited, daily_lim, timer_based, bounty));
+			std::cout << "Added task: " << name << std::endl;
+		} else if (cmd == "bounty" || cmd == "b") {
+			std::string name;
+			double points;
+			if (!(iss >> name)) {
+				std::cout << "Expected name" << std::endl;
+				continue;
+			}
+			if (!(iss >> points)) {
+				std::cout << "Expected points" << std::endl;
+				continue;
+			}
+			bool bounty = 1;
+			task_manager.add_task(Task(name, points, 0, 0, 0, bounty));
 			std::cout << "Added task: " << name << std::endl;
 		} else if (cmd == "complete" || cmd == "c") {
 			std::string name;
@@ -494,8 +526,10 @@ int main() {
 			if (iss >> filter) {
 				if (filter == "t" || filter == "time" || filter == "timer") filter = "timer";
 				else if (filter == "l" || filter == "lim" || filter == "limit" || filter == "limited") filter = "limited";
+				else if (filter == "b") filter = "bounty";
 				else if (filter == "nt" || filter == "notime" || filter == "notimer") filter = "notimer";
 				else if (filter == "nl" || filter == "nolim" || filter == "nolimit" || filter == "notlimited") filter = "nolimit";
+				else if (filter == "nb" || filter == "nob" || filter == "nbounty") filter = "nobounty";
 				else {
 					std::cout << "Filter " << filter << " not recognized" << std::endl;
 					continue;
@@ -509,6 +543,8 @@ int main() {
 				if (filter == "notimer" && t.timer_based) continue;
 				if (filter == "limited" && !t.is_limited) continue;
 				if (filter == "nolimit" && t.is_limited) continue;
+				if (filter == "bounty" && !t.bounty) continue;
+				if (filter == "nobounty" && t.bounty) continue;
 				std::cout << "    " << t.name << " (" << t.points << " pts)";
 				if (t.is_limited) {
 					std::cout << " [limited: " << t.daily_limit << "/day";
@@ -520,6 +556,7 @@ int main() {
 					std::cout << "]";
 				}
 				if (t.timer_based) std::cout << " [timer based]";
+				if (t.bounty) std::cout << " [bounty task]";
 				std::cout << std::endl;
 			}
 		} else if (cmd == "quit" || cmd == "exit" || cmd == "q" || cmd == "e") {
